@@ -47,6 +47,21 @@ class ProtectedTest(web.RequestHandler):
         #print(self.get_cookie("loginToken"))
         self.finish()
 
+class Authorizator(web.RequestHandler):
+    def get(self):
+        print("Entering authorizator")
+        argTest = self.get_argument("test","None")
+        headers = self.request.headers
+        print(self.request.headers)
+        print(argTest)
+        if("TENGOPASE" in headers.get_list("X-Auth-Token")):
+            self.set_status(200)
+            print("Entering...")
+        else:
+            self.set_status(401)
+            print("Get lost")
+        self.finish()
+
 
 
 app = web.Application([
@@ -54,6 +69,7 @@ app = web.Application([
     (r'/ws', SocketHandler),
     (r'/api', ApiHandler),
     (r'/protected',ProtectedTest),
+    (r'/auth',Authorizator),
     (r'/(favicon.ico)', web.StaticFileHandler, {'path': '../'}),
     (r'/(rest_api_example.png)', web.StaticFileHandler, {'path': './'}),
 ])
