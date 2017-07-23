@@ -1,10 +1,35 @@
 from tornado import websocket, web, ioloop
+import tornado.httpclient
 import json
 
 cl = []
 
+
+hostOpenAM = "http://cloudfoundry.atosresearch.eu:8000/openam/"
+
 class IndexHandler(web.RequestHandler):
     def get(self):
+        client = tornado.httpclient.HTTPClient()
+        URL = hostOpenAM+"json/authenticate"
+        #print(URL)
+        headers = { "X-OpenAM-Username":"pepe",
+                    "X-OpenAM-Password":"12345678",
+                    "Content-Type":"application/json"
+                    }
+        request = tornado.httpclient.HTTPRequest(URL,method="POST",body="{}",headers=headers)
+        response = client.fetch(request)
+        print("Headers:")
+        print(response.headers)
+        print("Body:")
+        print(response.body)
+        body = json.loads(response.body.decode("UTF-8"))
+        tokenId = body["tokenId"]
+
+        if not self.get_cookie("mycookie"):
+            self.set_cookie("iPlanetDirectoryPro", tokenId)
+            print("Setting the cookie")
+        else:
+            print("Not setting the cookie")
         self.render("index.html")
 
 class SocketHandler(websocket.WebSocketHandler):
@@ -54,7 +79,11 @@ class Authorizator(web.RequestHandler):
         headers = self.request.headers
         print(self.request.headers)
         print(argTest)
-        if("TENGOPASE" in headers.get_list("X-Auth-Token")):
+        print(self.request.cookies)
+        if(("TENGOPASE" in headers.get_list("X-Auth-Token"))
+            or
+           (self.get_cookie("iPlanetDirectoryPro","") == "TENGOPASE")           
+           ):
             self.set_status(200)
             print("Entering...")
         else:

@@ -85,7 +85,11 @@
   </div>
   <script>
     var host = window.location.host;
-    var ws = new WebSocket('ws://'+host+'/ws');
+    //var username = 'TENGOPASE';
+    //var sep = '@';
+    var username = ''
+    var sep = ''
+    var ws = new WebSocket('ws://'+username+sep+host+'/ws');
     var $message = $('#message');
 
     ws.onopen = function(){
