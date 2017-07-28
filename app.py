@@ -7,30 +7,109 @@ cl = []
 
 hostOpenAM = "http://cloudfoundry.atosresearch.eu:8000/openam/"
 
+
+def checkKey(testKey):
+    client = tornado.httpclient.HTTPClient()
+    URL = hostOpenAM+"json/users?_action=idFromSession"
+    headers = { "iPlanetDirectoryPro":testKey,
+                "Content-Type":"application/json"
+              }
+    request = tornado.httpclient.HTTPRequest(URL,method="POST",body="{}",headers=headers)
+    try:
+        response = client.fetch(request)
+        #print("Headers:")
+        #print(response.headers)
+        #print("Body:")
+        #print(response.body)
+        body = json.loads(response.body.decode("UTF-8"))
+    except tornado.httpclient.HTTPError as e:
+        # HTTPError is raised for non-200 responses; the response
+        # can be found in e.response.
+        if e.response.code == 401:
+            print("Unauthorized")    
+        else:
+            print("Error: " + str(e))
+        return False
+    except Exception as e:
+        # Other errors are possible, such as IOError.
+        print("General error: " + str(e))
+        return False
+    finally:
+        client.close()
+    return True
+
+def login(user,password):
+    client = tornado.httpclient.HTTPClient()
+    URL = hostOpenAM+"json/authenticate"
+    #print(URL)
+    headers = { "X-OpenAM-Username":user,
+                "X-OpenAM-Password":password,
+                "Content-Type":"application/json"
+                }
+    request = tornado.httpclient.HTTPRequest(URL,method="POST",body="{}",headers=headers)
+    try:
+        response = client.fetch(request)
+        #print("Headers:")
+        #print(response.headers)
+        #print("Body:")
+        #print(response.body)
+        body = json.loads(response.body.decode("UTF-8"))
+        
+    except tornado.httpclient.HTTPError as e:
+        # HTTPError is raised for non-200 responses; the response
+        # can be found in e.response.
+        if e.response.code == 401:
+            print("Unauthorized")    
+        else:
+            print("Error: " + str(e))
+        return None
+    except Exception as e:
+        # Other errors are possible, such as IOError.
+        print("General error: " + str(e))
+        return None
+    finally:
+        client.close()
+        
+    tokenId = body["tokenId"]
+    return tokenId
+
+
 class IndexHandler(web.RequestHandler):
     def get(self):
-        client = tornado.httpclient.HTTPClient()
-        URL = hostOpenAM+"json/authenticate"
-        #print(URL)
-        headers = { "X-OpenAM-Username":"pepe",
-                    "X-OpenAM-Password":"12345678",
-                    "Content-Type":"application/json"
-                    }
-        request = tornado.httpclient.HTTPRequest(URL,method="POST",body="{}",headers=headers)
-        response = client.fetch(request)
-        print("Headers:")
-        print(response.headers)
-        print("Body:")
-        print(response.body)
-        body = json.loads(response.body.decode("UTF-8"))
-        tokenId = body["tokenId"]
+        tokenId = login("pepe","12345678")
 
-        if not self.get_cookie("mycookie"):
-            self.set_cookie("iPlanetDirectoryPro", tokenId)
-            print("Setting the cookie")
+        if tokenId:
+            if not self.get_cookie("mycookie"):
+                self.set_cookie("iPlanetDirectoryPro", tokenId)
+                print("Setting the cookie")
+            else:
+                print("Not setting the cookie")
         else:
-            print("Not setting the cookie")
+            print("Login worked bad")
         self.render("index.html")
+
+class Login(web.RequestHandler):
+    def get(self):
+        user = self.get_argument("user",None)
+        password = self.get_argument("pass", None)
+
+        if not(user and password):
+            self.set_status(401)
+            self.finish()    
+            return
+
+        tokenId = login(user, password)
+        # preparing the answer
+        if tokenId:
+            answer = { "tokenId":tokenId }
+            self.write_message(answer)
+        else:
+            self.set_status(401)
+        self.finish()
+
+
+    def post(self):
+        get(self)
 
 class SocketHandler(websocket.WebSocketHandler):
     def check_origin(self, origin):
@@ -80,17 +159,23 @@ class Authorizator(web.RequestHandler):
         print(self.request.headers)
         print(argTest)
         print(self.request.cookies)
-        if(("TENGOPASE" in headers.get_list("X-Auth-Token"))
-            or
-           (self.get_cookie("iPlanetDirectoryPro","") == "TENGOPASE")           
-           ):
-            self.set_status(200)
-            print("Entering...")
-        else:
-            self.set_status(401)
-            print("Get lost")
-        self.finish()
 
+        keyList = headers.get_list("X-Auth-Token")
+        keyList.append(self.get_cookie("iPlanetDirectoryPro",None))
+
+        for key in keyList:
+            print("key :{}")
+            if checkKey(key):
+                # there is a valid key
+                print("Valid!!")
+                self.set_status(200)
+                break
+        else:
+            #if we are, all the keys are invalid
+            print("Not valid!!")
+            self.set_status(401)
+
+        self.finish()
 
 
 app = web.Application([
