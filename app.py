@@ -6,11 +6,12 @@ cl = []
 
 
 hostOpenAM = "http://cloudfoundry.atosresearch.eu:8000/openam/"
-
+hostCache = "http://localhost/openam/"
 
 def checkKey(testKey):
     client = tornado.httpclient.HTTPClient()
-    URL = hostOpenAM+"json/users?_action=idFromSession"
+    #URL = hostOpenAM+"json/users?_action=idFromSession"
+    URL = hostCache+"json/users?_action=idFromSession"
     headers = { "iPlanetDirectoryPro":testKey,
                 "Content-Type":"application/json"
               }
