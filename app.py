@@ -1,5 +1,7 @@
-from tornado import websocket, web, ioloop
+from tornado import websocket, ioloop
 import tornado.httpclient
+import tornado.gen
+import tornado.web
 import json
 
 cl = []
@@ -8,8 +10,10 @@ cl = []
 hostOpenAM = "http://cloudfoundry.atosresearch.eu:8000/openam/"
 hostCache = "http://localhost/openam/"
 
+@tornado.gen.coroutine
 def checkKey(testKey):
-    client = tornado.httpclient.HTTPClient()
+    #client = tornado.httpclient.HTTPClient()
+    client = tornado.httpclient.AsyncHTTPClient()
     #URL = hostOpenAM+"json/users?_action=idFromSession"
     URL = hostCache+"json/users?_action=idFromSession"
     headers = { "iPlanetDirectoryPro":testKey,
@@ -17,7 +21,7 @@ def checkKey(testKey):
               }
     request = tornado.httpclient.HTTPRequest(URL,method="POST",body="{}",headers=headers)
     try:
-        response = client.fetch(request)
+        response = yield client.fetch(request)
         #print("Headers:")
         #print(response.headers)
         #print("Body:")
@@ -30,14 +34,15 @@ def checkKey(testKey):
             print("Unauthorized")    
         else:
             print("Error: " + str(e))
-        return False
+        #return False
+        raise tornado.gen.Return(False)
     except Exception as e:
         # Other errors are possible, such as IOError.
         print("General error: " + str(e))
-        return False
-    finally:
-        client.close()
-    return True
+        raise tornado.gen.Return(False)
+    #if we are here, the return code is 200, it is valid
+    print("Valid")
+    raise tornado.gen.Return(True)
 
 def login(user,password):
     client = tornado.httpclient.HTTPClient()
@@ -75,7 +80,7 @@ def login(user,password):
     return tokenId
 
 
-class IndexHandler(web.RequestHandler):
+class IndexHandler(tornado.web.RequestHandler):
     def get(self):
         tokenId = login("pepe","12345678")
 
@@ -89,7 +94,7 @@ class IndexHandler(web.RequestHandler):
             print("Login worked bad")
         self.render("index.html")
 
-class Login(web.RequestHandler):
+class Login(tornado.web.RequestHandler):
     def get(self):
         user = self.get_argument("user",None)
         password = self.get_argument("pass", None)
@@ -126,9 +131,9 @@ class SocketHandler(websocket.WebSocketHandler):
             print("Cerrado"+str(self))
             cl.remove(self)
 
-class ApiHandler(web.RequestHandler):
+class ApiHandler(tornado.web.RequestHandler):
 
-    @web.asynchronous
+    @tornado.web.asynchronous
     def get(self, *args):
         self.finish()
         id = self.get_argument("id")
@@ -139,11 +144,11 @@ class ApiHandler(web.RequestHandler):
         for c in cl:
             c.write_message(data)
 
-    @web.asynchronous
+    @tornado.web.asynchronous
     def post(self):
         pass
 
-class ProtectedTest(web.RequestHandler):
+class ProtectedTest(tornado.web.RequestHandler):
     def get(self):
         print("Entering protected...")
         argTest = self.get_argument("test","None")
@@ -152,7 +157,8 @@ class ProtectedTest(web.RequestHandler):
         #print(self.get_cookie("loginToken"))
         self.finish()
 
-class Authorizator(web.RequestHandler):
+class Authorizator(tornado.web.RequestHandler):
+    @tornado.gen.coroutine
     def get(self):
         print("Entering authorizator")
         argTest = self.get_argument("test","None")
@@ -165,8 +171,9 @@ class Authorizator(web.RequestHandler):
         keyList.append(self.get_cookie("iPlanetDirectoryPro",None))
 
         for key in keyList:
-            print("key :{}")
-            if checkKey(key):
+            print("key :{}".format(key))
+            checked = yield checkKey(key)
+            if checked:
                 # there is a valid key
                 print("Valid!!")
                 self.set_status(200)
@@ -179,14 +186,14 @@ class Authorizator(web.RequestHandler):
         self.finish()
 
 
-app = web.Application([
+app = tornado.web.Application([
     (r'/', IndexHandler),
     (r'/ws', SocketHandler),
     (r'/api', ApiHandler),
     (r'/protected',ProtectedTest),
     (r'/auth',Authorizator),
-    (r'/(favicon.ico)', web.StaticFileHandler, {'path': '../'}),
-    (r'/(rest_api_example.png)', web.StaticFileHandler, {'path': './'}),
+    (r'/(favicon.ico)', tornado.web.StaticFileHandler, {'path': '../'}),
+    (r'/(rest_api_example.png)', tornado.web.StaticFileHandler, {'path': './'}),
 ])
 
 if __name__ == '__main__':
